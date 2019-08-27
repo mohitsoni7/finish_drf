@@ -6,7 +6,7 @@ from django.views.decorators.csrf import csrf_exempt
 
 from rest_framework import renderers
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, action
 from rest_framework import mixins
 from rest_framework import permissions
 from rest_framework.parsers import JSONParser
@@ -14,11 +14,11 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 from rest_framework import generics
-
+from rest_framework import viewsets
 
 from .models import Snippet
 from .permissions import IsOwnerOrReadOnly
-from .serializers import SnippetModelSerializer, UserModelSerializer, SnippetHyperlinkedModelSerializer, UserHyperlinkedModelSerializer
+from .serializers import SnippetModelSerializer, UserModelSerializer, SnippetHyperlinkedModelSerializer, UserHyperlinkedModelSerializer, SnippetHighlightSerializer
 
 
 @csrf_exempt
@@ -251,8 +251,9 @@ def api_root(request, format=None):
         })
 
 
-class SnippetHighlight(generics.GenericAPIView):
+class SnippetHighlight(generics.ListAPIView):
     queryset = Snippet.objects.all()
+    serializer_class = SnippetHighlightSerializer
     renderer_classes = [renderers.StaticHTMLRenderer]  
 
     def get(self, request, *args, **kwargs):
@@ -279,3 +280,42 @@ class UserList2(generics.ListAPIView):
 class UserDetail2(generics.RetrieveAPIView):
     queryset = User.objects.all()
     serializer_class = UserHyperlinkedModelSerializer
+
+
+# =====================================================================================================
+
+class UserViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    A Viewset for viewing Users and Retrieving Users.
+    """
+    queryset = User.objects.all()
+    serializer_class = UserHyperlinkedModelSerializer
+
+    def list(self, serializer):
+        users = User.objects.all()
+        serializer = self.serializer_class(users, many=True, context={'request': self.request})
+        print(serializer.data)
+        return Response(serializer.data)
+
+
+
+class SnippetViewSet(viewsets.ModelViewSet):
+    """
+    This viewset automatically provides `list`, `create`, `retrieve`,
+    `update` and `destroy` actions.
+    """
+
+    queryset = Snippet.objects.all()
+    serializer_class = SnippetHyperlinkedModelSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsOwnerOrReadOnly]
+
+
+    @action(detail=True, renderer_classes=[renderers.StaticHTMLRenderer])
+    def highlight(self, request, *args, **kwargs):
+        snippet = self.get_object()
+        return Response(snippet.highlighted)
+
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
